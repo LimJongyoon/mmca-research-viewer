@@ -116,6 +116,7 @@ table.grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; 
 
 <div class="tabs" id="tabs">
   <button data-sheet="sessions" class="on">세션</button>
+  <button data-sheet="artworks">작품별 통계</button>
   <button data-sheet="visits">작품 관람</button>
   <button data-sheet="chat">대화</button>
   <button data-sheet="sensors">센서</button>
@@ -289,6 +290,28 @@ const SHEETS = {
     rows: scope().flatMap(s => s.visits.map((v, i) => ({ _sid: s.id, session: '#' + s.no, device: v.device, order: i + 1, start: fmtDT(v.start), end: fmtT(v.end),
       artwork: art(v.artwork), title: v.title, seconds: v.seconds, mmss: mmss(v.seconds), next: String(v.next || '').startsWith('artwork_') ? art(v.next) : v.next }))),
   }),
+  artworks: () => {
+    // 작품마다: 관람 횟수, 본 세션(관람객) 수, 머문 시간 합·평균·최대, 그 작품 앞에서 한 관람객 말 수 → 선호 순위
+    const m = new Map();
+    const get = (id, title) => { let a = m.get(id); if (!a) { a = { id, title: '', visits: 0, sessions: new Set(), total: 0, max: 0, questions: 0 }; m.set(id, a); } if (title) a.title = title; return a; };
+    const ss = scope();
+    for (const s of ss) {
+      for (const v of s.visits) { const a = get(v.artwork, v.title); a.visits++; a.sessions.add(s.id); a.total += v.seconds || 0; a.max = Math.max(a.max, v.seconds || 0); }
+      for (const c of s.chat) if (c.data.role === 'visitor' && c.data.artwork) get(c.data.artwork).questions++;
+    }
+    const n = ss.length || 1;
+    const rows = [...m.values()].filter(a => a.id).sort((a, b) => b.total - a.total).map((a, i) => ({
+      _sid: null, rank: i + 1, artwork: art(a.id), title: a.title, visits: a.visits, sessions: a.sessions.size,
+      reach: Math.round(a.sessions.size / n * 100), total: mmss(a.total), totalSec: Math.round(a.total),
+      avg: a.visits ? Math.round(a.total / a.visits) : 0, max: Math.round(a.max), questions: a.questions }));
+    return {
+      cols: [C('rank', '순위', 46, { num: 1 }), C('artwork', '작품', 50), C('title', '제목', 240), C('totalSec', '머문 초 합계', 90, { num: 1 }),
+        C('total', '머문 시간 합계', 100, { num: 1 }), C('avg', '평균 초', 64, { num: 1 }), C('max', '최대 초', 64, { num: 1 }),
+        C('visits', '관람 횟수', 70, { num: 1 }), C('sessions', '본 세션 수', 76, { num: 1 }), C('reach', '본 비율 %', 72, { num: 1 }),
+        C('questions', '관람객 말 수', 86, { num: 1 })],
+      rows,
+    };
+  },
   chat: () => ({
     cols: [C('session', '세션', 56), C('at', '시각', 150), C('artwork', '작품', 50), C('who', '누가', 64), C('via', '방법', 56), C('text', '내용', 720)],
     rows: scope().flatMap(s => s.chat.map(c => ({ _sid: s.id, _visitor: c.data.role === 'visitor', session: '#' + s.no, at: fmtDT(c.at), artwork: art(c.data.artwork),
@@ -386,7 +409,7 @@ function download(name, text, type) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-const SHEET_NAMES = { sessions: '세션', visits: '작품관람', chat: '대화', sensors: '센서', log: '전체기록' };
+const SHEET_NAMES = { artworks: '작품별통계', sessions: '세션', visits: '작품관람', chat: '대화', sensors: '센서', log: '전체기록' };
 $('dlCsv').onclick = () => {
   const cell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const rows = view.sorted || [];
