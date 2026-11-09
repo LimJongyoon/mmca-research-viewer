@@ -232,10 +232,20 @@ function buildSessions() {
   for (const r of rangeRows) {
     let s = map.get(r.session_id);
     if (!s) { s = { id: r.session_id, device: r.device, version: r.app_version, start: r.at, end: r.at, worn: false,
-                    startReason: '', endReason: '', visits: [], chat: [] }; map.set(r.session_id, s); }
+                    startReason: '', endReason: '', visits: [], chat: [], latencies: [], interrupts: 0,
+                    explainStart: [], explainEnd: [], explainPause: [], visitorSec: 0, docentSec: 0, krw: 0, env: {} }; map.set(r.session_id, s); }
     if (r.at < s.start) s.start = r.at;
     if (r.at > s.end) s.end = r.at;
-    if (r.kind === 'session' && r.category === 'start') { s.worn = !!(r.data && r.data.worn); s.startReason = r.message; }
+    if (r.kind === 'session' && r.category === 'start') { s.worn = !!(r.data && r.data.worn); s.startReason = r.message; s.env = r.data || {}; }
+    const ev = r.data && r.data.event;
+    if (ev === 'docent_start' && r.data.latency != null) s.latencies.push(r.data.latency);
+    if (ev === 'visitor_start' && r.data.interrupted_docent) s.interrupts++;
+    if (ev === 'visitor_end' && r.data.seconds) s.visitorSec += r.data.seconds;
+    if (ev === 'docent_end' && r.data.seconds) s.docentSec += r.data.seconds;
+    if (ev === 'explain_start') s.explainStart.push(r.data);
+    if (ev === 'explain_end') s.explainEnd.push(r.data);
+    if (ev === 'explain_pause') s.explainPause.push(r.data);
+    if (r.category === 'usage' && r.data && r.data.krw != null) s.krw += r.data.krw;
     if (r.kind === 'session' && r.category === 'end') s.endReason = r.message;
     if (r.category === 'visit' && r.data) s.visits.push(visitOf(r));
     if (r.data && r.data.role) s.chat.push(r);
@@ -276,12 +286,19 @@ const SHEETS = {
     cols: [C('no', '세션', 56, { num: 1 }), C('start', '시작', 150), C('end', '끝', 150), C('len', '길이', 64, { num: 1 }),
       C('device', '기기', 46, { num: 1 }), C('worn', '상태', 56), C('nVisits', '작품 수', 64, { num: 1 }), C('path', '작품 경로', 260),
       C('visitSec', '작품 앞 합계', 90, { num: 1 }), C('nVisitor', '관람객 말', 72, { num: 1 }), C('nDocent', '도슨트 말', 72, { num: 1 }),
-      C('startReason', '시작 이유', 90), C('endReason', '끝난 이유', 110), C('version', '앱', 64), C('id', '세션 ID', 280, { dim: 1 })],
+      C('latency', '응답 지연 평균 초', 110, { num: 1 }), C('interrupts', '끼어들기', 64, { num: 1 }),
+      C('visitorSec', '관람객 말한 초', 96, { num: 1 }), C('docentSec', '도슨트 말한 초', 96, { num: 1 }),
+      C('nExplain', '설명 시작', 64, { num: 1 }), C('nExplainDone', '설명 끝까지', 76, { num: 1 }), C('krw', 'AI 비용 원', 72, { num: 1 }),
+      C('lang', '언어', 46), C('engine', '엔진', 70), C('startReason', '시작 이유', 90), C('endReason', '끝난 이유', 110), C('version', '앱', 64), C('id', '세션 ID', 280, { dim: 1 })],
     rows: visibleSessions().map(s => ({ _sid: s.id, no: s.no, start: fmtDT(s.start), end: fmtDT(s.end), len: mmss(secs(s.start, s.end)),
       device: s.device, worn: s.worn ? '관람' : '벗음', nVisits: s.visits.length,
       path: s.visits.map(v => art(v.artwork) + (v.next === '이동' ? ' →(이동)' : '')).join(' → '),
       visitSec: mmss(s.visits.reduce((a, v) => a + (v.seconds || 0), 0)),
       nVisitor: s.chat.filter(c => c.data.role === 'visitor').length, nDocent: s.chat.filter(c => c.data.role !== 'visitor').length,
+      latency: s.latencies.length ? +(s.latencies.reduce((a, b) => a + b, 0) / s.latencies.length).toFixed(2) : '',
+      interrupts: s.interrupts, visitorSec: Math.round(s.visitorSec), docentSec: Math.round(s.docentSec),
+      nExplain: s.explainStart.length, nExplainDone: s.explainEnd.length, krw: s.krw,
+      lang: s.env.language || '', engine: (s.env.settings || {}).voice_engine || '',
       startReason: s.startReason, endReason: s.endReason, version: s.version, id: s.id })),
   }),
   visits: () => ({
@@ -293,22 +310,28 @@ const SHEETS = {
   artworks: () => {
     // 작품마다: 관람 횟수, 본 세션(관람객) 수, 머문 시간 합·평균·최대, 그 작품 앞에서 한 관람객 말 수 → 선호 순위
     const m = new Map();
-    const get = (id, title) => { let a = m.get(id); if (!a) { a = { id, title: '', visits: 0, sessions: new Set(), total: 0, max: 0, questions: 0 }; m.set(id, a); } if (title) a.title = title; return a; };
+    const get = (id, title) => { let a = m.get(id); if (!a) { a = { id, title: '', visits: 0, sessions: new Set(), total: 0, max: 0, questions: 0, ex: 0, exDone: 0, exPart: [] }; m.set(id, a); } if (title) a.title = title; return a; };
     const ss = scope();
     for (const s of ss) {
       for (const v of s.visits) { const a = get(v.artwork, v.title); a.visits++; a.sessions.add(s.id); a.total += v.seconds || 0; a.max = Math.max(a.max, v.seconds || 0); }
       for (const c of s.chat) if (c.data.role === 'visitor' && c.data.artwork) get(c.data.artwork).questions++;
+      for (const e of s.explainStart) get(e.artwork, e.title).ex++;
+      for (const e of s.explainEnd) get(e.artwork).exDone++;
+      for (const e of s.explainPause) { const f = e.duration ? e.position / e.duration : (e.script_chars ? e.chars_spoken / e.script_chars : null); if (f != null) get(e.artwork).exPart.push(f); }
     }
     const n = ss.length || 1;
     const rows = [...m.values()].filter(a => a.id).sort((a, b) => b.total - a.total).map((a, i) => ({
       _sid: null, rank: i + 1, artwork: art(a.id), title: a.title, visits: a.visits, sessions: a.sessions.size,
       reach: Math.round(a.sessions.size / n * 100), total: mmss(a.total), totalSec: Math.round(a.total),
-      avg: a.visits ? Math.round(a.total / a.visits) : 0, max: Math.round(a.max), questions: a.questions }));
+      avg: a.visits ? Math.round(a.total / a.visits) : 0, max: Math.round(a.max), questions: a.questions,
+      ex: a.ex, exDone: a.exDone, exRate: a.ex ? Math.round(a.exDone / a.ex * 100) : '',
+      exPart: a.exPart.length ? Math.round(a.exPart.reduce((x, y) => x + y, 0) / a.exPart.length * 100) : '' }));
     return {
       cols: [C('rank', '순위', 46, { num: 1 }), C('artwork', '작품', 50), C('title', '제목', 240), C('totalSec', '머문 초 합계', 90, { num: 1 }),
         C('total', '머문 시간 합계', 100, { num: 1 }), C('avg', '평균 초', 64, { num: 1 }), C('max', '최대 초', 64, { num: 1 }),
         C('visits', '관람 횟수', 70, { num: 1 }), C('sessions', '본 세션 수', 76, { num: 1 }), C('reach', '본 비율 %', 72, { num: 1 }),
-        C('questions', '관람객 말 수', 86, { num: 1 })],
+        C('questions', '관람객 말 수', 86, { num: 1 }), C('ex', '설명 시작', 64, { num: 1 }), C('exDone', '끝까지 들음', 76, { num: 1 }),
+        C('exRate', '끝까지 %', 64, { num: 1 }), C('exPart', '멈출 때 들은 %', 96, { num: 1 })],
       rows,
     };
   },
