@@ -276,6 +276,7 @@ function tickRow(t) {
     cam1: art((cam[0] || [])[0]), cam1p: (cam[0] || [])[1] ?? '', cam2: art((cam[1] || [])[0]), cam2p: (cam[1] || [])[1] ?? '', camAge: d.camAge ?? '',
     walking: m.walking == null ? '' : (m.walking ? '걷는 중' : ''), walked: m.walked ?? '', heading: m.heading ?? '', yaw: m.yaw ?? '', accel: m.accel ?? '',
     gx: g[0] ?? '', gy: g[1] ?? '', gz: g[2] ?? '', mx: b[0] ?? '', my: b[1] ?? '', mz: b[2] ?? '',
+    posx: (d.pos || [])[0] ?? '', posy: (d.pos || [])[1] ?? '', appState: d.state || '', activity: d.activity || '',
     beacons: d.obs3 ? Object.entries(d.obs3).sort((x, y) => y[1][0] - x[1][0]).map(([k, v]) => `${k}:${v[0]}`).join(' ') : '' };
 }
 
@@ -346,7 +347,8 @@ const SHEETS = {
       C('cam1', '사진 1위', 58), C('cam1p', '확률', 54, { num: 1 }), C('cam2', '사진 2위', 58), C('cam2p', '확률', 54, { num: 1 }), C('camAge', '사진 나이', 64, { num: 1 }),
       C('walking', '걷기', 56), C('walked', '걸은 m', 58, { num: 1 }), C('heading', '방향°', 56, { num: 1 }), C('yaw', 'yaw°', 56, { num: 1 }), C('accel', '가속', 56, { num: 1 }),
       C('gx', '중력x', 54, { num: 1 }), C('gy', '중력y', 54, { num: 1 }), C('gz', '중력z', 54, { num: 1 }),
-      C('mx', '자기x', 54, { num: 1 }), C('my', '자기y', 54, { num: 1 }), C('mz', '자기z', 54, { num: 1 }), C('beacons', '비콘 3초 평균 rssi', 600, { dim: 1 })];
+      C('mx', '자기x', 54, { num: 1 }), C('my', '자기y', 54, { num: 1 }), C('mz', '자기z', 54, { num: 1 }), C('posx', '위치 x(m)', 70, { num: 1 }), C('posy', '위치 y(m)', 70, { num: 1 }),
+      C('appState', '앱 상태', 90), C('activity', '하는 일', 80), C('beacons', '비콘 3초 평균 rssi', 600, { dim: 1 })];
     if (!selected) return { cols, rows: [], note: '센서 시트는 세션 하나를 고르면 보입니다. "세션" 시트에서 행을 누르세요.' };
     const rows = (await rowsOfSession(selected)).filter(r => r.kind === 'tick').map(t => ({ _sid: selected, ...tickRow(t) }));
     return { cols, rows };
