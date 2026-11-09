@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MMCA 관람 기록</title>
+<meta name="robots" content="noindex">
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e3de;
+  --accent: #2f5bd3; --accent-ink: #ffffff; --visitor: #e8eefc; --docent: #f1f1ed;
+  --ok: #1f7a4a; --warn: #b0451b; --ble: #2f5bd3; --cam: #c2410c; --walk: rgba(31,122,74,.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413; --panel: #1d1d1b; --ink: #ecece8; --muted: #9a9a93; --line: #33332f;
+    --accent: #7c9cf5; --accent-ink: #10131c; --visitor: #22293d; --docent: #26261f;
+    --ok: #5cc98d; --warn: #f08a5d; --ble: #7c9cf5; --cam: #f59e57; --walk: rgba(92,201,141,.14);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif; }
+header { padding: 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+header h1 { font-size: 17px; margin: 0; flex: 1; }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.panel h2 { font-size: 15px; margin: 0 0 12px; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
+input, select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--ink); font: inherit; }
+button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+  color: var(--ink); font: inherit; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.row > * { flex: 0 0 auto; }
+.row .grow { flex: 1 1 160px; }
+.muted { color: var(--muted); font-size: 13px; }
+.error { color: var(--warn); font-size: 13px; white-space: pre-wrap; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 13px; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--bg); }
+tr.sel td { background: var(--visitor); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; }
+.path { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { padding: 3px 9px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; }
+.chip.move { color: var(--muted); border-style: dashed; }
+.chat { display: flex; flex-direction: column; gap: 8px; max-height: 520px; overflow-y: auto; }
+.bubble { max-width: 85%; padding: 8px 12px; border-radius: 12px; }
+.bubble.visitor { align-self: flex-end; background: var(--visitor); }
+.bubble.docent { align-self: flex-start; background: var(--docent); }
+.bubble .meta { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.stat { background: var(--bg); border-radius: 8px; padding: 10px; }
+.stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+svg text { fill: var(--muted); font-size: 11px; }
+.legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 12px; height: 3px; vertical-align: middle; margin-right: 4px; }
+.hidden { display: none !important; }
+pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MMCA AI 도슨트 · 관람 기록</h1>
+  <span id="who" class="muted"></span>
+  <button id="logout" class="hidden">로그아웃</button>
+</header>
+<main>
+
+  <!-- 1. 연결 설정 + 로그인 -->
+  <section id="loginPanel" class="panel hidden">
+    <h2>로그인</h2>
+    <p class="muted">Supabase 프로젝트 ID와 Publishable key는 이 브라우저에만 저장됩니다. 기록을 읽으려면 허용된 이메일로 로그인해야 합니다.</p>
+    <div class="row">
+      <div class="grow"><label for="ref">프로젝트 ID</label><input id="ref" placeholder="abcdefghijklmnop" autocomplete="off"></div>
+      <div class="grow"><label for="key">Publishable key</label><input id="key" placeholder="sb_publishable_…" autocomplete="off"></div>
+    </div>
+    <div class="row">
+      <div class="grow"><label for="email">이메일</label><input id="email" type="email" autocomplete="username"></div>
+      <div class="grow"><label for="pw">비밀번호</label><input id="pw" type="password" autocomplete="current-password"></div>
+      <button id="login" class="primary">로그인</button>
+    </div>
+    <p id="loginErr" class="error"></p>
+  </section>
+
+  <!-- 2. 세션 목록 -->
+  <section id="listPanel" class="panel hidden">
+    <h2>관람 세션 <span class="muted">· 안경을 쓴 순간부터 벗을 때까지가 한 세션</span></h2>
+    <div class="row">
+      <div><label for="from">시작일</label><input id="from" type="date"></div>
+      <div><label for="to">종료일</label><input id="to" type="date"></div>
+      <div><label for="dev">기기</label><select id="dev"><option value="">전체</option><option>1</option><option>2</option></select></div>
+      <div><label><input id="showOff" type="checkbox" style="width:auto"> 안경 벗은 구간도</label></div>
+      <button id="load" class="primary">불러오기</button>
+      <button id="dlRange">기간 전체 받기 (JSONL)</button>
+      <button id="dlVisitsRange">기간 작품 관람 CSV</button>
+      <button id="dlChatRange">기간 대화 CSV</button>
+    </div>
+    <p id="listMsg" class="muted"></p>
+    <div class="stats" id="rangeStats"></div>
+    <div class="tablewrap"><table id="sessions"></table></div>
+  </section>
+
+  <!-- 3. 세션 자세히 -->
+  <section id="detailPanel" class="panel hidden">
+    <div class="row" style="justify-content: space-between; align-items: center;">
+      <h2 id="detailTitle" style="margin:0"></h2>
+      <div class="row">
+        <button id="dlSession">이 세션 전체 (JSON)</button>
+        <button id="dlSessionVisits">작품 관람 CSV</button>
+        <button id="dlSessionChat">대화 CSV</button>
+        <button id="dlSessionTicks">센서 CSV</button>
+      </div>
+    </div>
+    <p id="detailMsg" class="muted"></p>
+    <div class="stats" id="detailStats"></div>
+    <div class="tabs" id="tabs">
+      <button data-tab="visits" class="on">작품·이동</button>
+      <button data-tab="chat">대화</button>
+      <button data-tab="sensors">센서</button>
+      <button data-tab="log">전체 기록</button>
+    </div>
+    <div data-pane="visits">
+      <div class="path" id="path"></div>
+      <div class="tablewrap" style="margin-top:12px"><table id="visits"></table></div>
+    </div>
+    <div data-pane="chat" class="hidden"><div class="chat" id="chat"></div></div>
+    <div data-pane="sensors" class="hidden">
+      <div class="legend">
+        <span><i style="background:var(--ble)"></i>비콘 1위 점수</span>
+        <span><i style="background:var(--cam)"></i>사진 1위 확률</span>
+        <span><i style="background:var(--walk);height:10px"></i>걷는 중</span>
+      </div>
+      <div id="chart"></div>
+      <div class="tablewrap"><table id="ticks"></table></div>
+      <p class="muted">센서 표는 처음 300줄만 보여 줍니다. 전부는 "센서 CSV"로 받으세요. 안경은 자이로(회전 속도) 원값을 주지 않아 가속(중력 방향)·자기장·머리 방향을 남깁니다.</p>
+    </div>
+    <div data-pane="log" class="hidden">
+      <div class="row"><div class="grow"><input id="logFilter" placeholder="걸러 보기 (분류나 내용)"></div></div>
+      <div class="tablewrap"><table id="log"></table></div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const TABLE = 'research_events';
+const PAGE = 1000;
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem('mmca.' + k) || ''; } catch { return ''; } },
+  set(k, v) { try { localStorage.setItem('mmca.' + k, v); } catch {} },
+};
+let sb = null;
+let rangeRows = [];      // 기간의 session/log 줄(센서 제외)
+let sessions = [];
+let current = null;      // { id, rows }
+
+// ---------- 시작 ----------
+$('ref').value = store.get('ref');
+$('key').value = store.get('key');
+const today = new Date();
+const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+$('to').value = iso(today);
+$('from').value = iso(new Date(today.getTime() - 6 * 86400000));
+init();
+
+async function init() {
+  const ref = store.get('ref'), key = store.get('key');
+  if (ref && key) {
+    sb = supabase.createClient(`https://${ref}.supabase.co`, key);
+    const { data } = await sb.auth.getSession();
+    if (data.session) return signedIn(data.session.user);
+  }
+  $('loginPanel').classList.remove('hidden');
+}
+
+$('login').onclick = async () => {
+  $('loginErr').textContent = '';
+  const ref = $('ref').value.trim().replace(/^https?:\/\//, '').replace(/\.supabase\.co.*$/, '');
+  const key = $('key').value.trim();
+  if (!ref || !key) { $('loginErr').textContent = '프로젝트 ID와 키를 넣어 주세요.'; return; }
+  store.set('ref', ref); store.set('key', key);
+  sb = supabase.createClient(`https://${ref}.supabase.co`, key);
+  const { data, error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('pw').value });
+  if (error) { $('loginErr').textContent = '로그인 실패: ' + error.message; return; }
+  signedIn(data.user);
+};
+
+$('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+function signedIn(user) {
+  $('loginPanel').classList.add('hidden');
+  $('listPanel').classList.remove('hidden');
+  $('logout').classList.remove('hidden');
+  $('who').textContent = user.email;
+  loadRange();
+}
+
+// ---------- 불러오기 ----------
+async function fetchAll(build) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
+function rangeBounds() {
+  const start = new Date($('from').value + 'T00:00:00');
+  const end = new Date($('to').value + 'T00:00:00'); end.setDate(end.getDate() + 1);
+  return [start.toISOString(), end.toISOString()];
+}
+
+function baseQuery(kinds) {
+  const [a, b] = rangeBounds();
+  let q = sb.from(TABLE).select('*').gte('at', a).lt('at', b);
+  if (kinds) q = q.in('kind', kinds);
+  if ($('dev').value) q = q.eq('device', Number($('dev').value));
+  return q.order('at').order('seq');
+}
+
+$('load').onclick = loadRange;
+
+async function loadRange() {
+  $('listMsg').textContent = '불러오는 중…';
+  try {
+    rangeRows = await fetchAll(() => baseQuery(['session', 'log']));
+  } catch (e) { $('listMsg').textContent = ''; return showErr('listMsg', e); }
+  buildSessions();
+  renderSessions();
+}
+
+function showErr(id, e) {
+  const el = $(id);
+  el.className = 'error';
+  el.textContent = '불러오기 실패: ' + (e.message || e) +
+    (String(e.message || '').includes('permission') ? '\n이 이메일이 research_viewers 에 있는지 확인하세요.' : '');
+}
+
+function buildSessions() {
+  const map = new Map();
+  for (const r of rangeRows) {
+    let s = map.get(r.session_id);
+    if (!s) { s = { id: r.session_id, device: r.device, version: r.app_version, start: r.at, end: r.at,
+                    worn: null, reason: '', endReason: '', visits: [], chat: [], rows: 0 };
+              map.set(r.session_id, s); }
+    s.rows++;
+    if (r.at < s.start) s.start = r.at;
+    if (r.at > s.end) s.end = r.at;
+    if (r.kind === 'session' && r.category === 'start') { s.worn = !!(r.data && r.data.worn); s.reason = r.message; }
+    if (r.kind === 'session' && r.category === 'end') s.endReason = r.message;
+    if (r.category === 'visit' && r.data) s.visits.push(visitOf(r));
+    if (r.data && r.data.role) s.chat.push(r);
+  }
+  sessions = [...map.values()].sort((a, b) => b.start.localeCompare(a.start));
+}
+
+function visitOf(r) {
+  const d = r.data;
+  return { artwork: d.artwork, title: d.title || '', seconds: d.seconds,
+           start: d.start ? new Date(d.start * 1000).toISOString() : r.at, next: d.next, session: r.session_id };
+}
+
+const fmtTime = s => new Date(s).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const fmtClock = s => new Date(s).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const fmtDur = sec => { sec = Math.round(sec); const m = Math.floor(sec / 60); return m ? `${m}분 ${sec % 60}초` : `${sec}초`; };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const shortArt = id => (id || '').replace('artwork_', '');
+
+function renderSessions() {
+  const list = sessions.filter(s => $('showOff').checked || s.worn);
+  const worn = sessions.filter(s => s.worn);
+  const totalSec = worn.reduce((a, s) => a + (new Date(s.end) - new Date(s.start)) / 1000, 0);
+  const visits = worn.flatMap(s => s.visits);
+  $('rangeStats').innerHTML = [
+    ['관람 세션', worn.length], ['총 관람 시간', fmtDur(totalSec)],
+    ['작품 관람', visits.length + '번'], ['관람객 말', worn.reduce((a, s) => a + s.chat.filter(c => c.data.role === 'visitor').length, 0) + '번'],
+  ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  $('listMsg').className = 'muted';
+  $('listMsg').textContent = list.length ? '' : '이 기간에 기록이 없습니다.';
+  $('sessions').innerHTML = list.length ? `<tr><th>시작</th><th>기기</th><th class="num">길이</th><th>작품 경로</th><th class="num">작품</th><th class="num">대화</th><th>끝난 이유</th></tr>` +
+    list.map(s => `<tr class="click${current && current.id === s.id ? ' sel' : ''}" data-id="${s.id}">
+      <td>${fmtTime(s.start)}${s.worn ? '' : ' <span class="muted">(벗음)</span>'}</td>
+      <td>${s.device ?? ''}</td>
+      <td class="num">${fmtDur((new Date(s.end) - new Date(s.start)) / 1000)}</td>
+      <td>${s.visits.map(v => shortArt(v.artwork)).join(' → ') || '<span class="muted">-</span>'}</td>
+      <td class="num">${s.visits.length}</td>
+      <td class="num">${s.chat.length}</td>
+      <td class="muted">${esc(s.endReason)}</td></tr>`).join('') : '';
+  for (const tr of $('sessions').querySelectorAll('tr.click')) tr.onclick = () => openSession(tr.dataset.id);
+}
+$('showOff').onchange = renderSessions;
+
+// ---------- 세션 자세히 ----------
+async function openSession(id) {
+  const s = sessions.find(x => x.id === id);
+  $('detailPanel').classList.remove('hidden');
+  $('detailTitle').textContent = `세션 ${id.slice(0, 8)} · 기기 ${s.device ?? '-'} · ${fmtTime(s.start)}`;
+  $('detailMsg').className = 'muted';
+  $('detailMsg').textContent = '불러오는 중…';
+  let rows;
+  try {
+    rows = await fetchAll(() => sb.from(TABLE).select('*').eq('session_id', id).order('seq'));
+  } catch (e) { return showErr('detailMsg', e); }
+  current = { id, rows, session: s };
+  renderSessions();
+  $('detailMsg').textContent = `앱 ${s.version || '-'} · 시작: ${esc(s.reason)} · 끝: ${esc(s.endReason) || '진행 중'}`;
+  const ticks = rows.filter(r => r.kind === 'tick');
+  const visits = rows.filter(r => r.category === 'visit' && r.data).map(visitOf);
+  const chat = rows.filter(r => r.data && r.data.role);
+  $('detailStats').innerHTML = [
+    ['길이', fmtDur((new Date(s.end) - new Date(s.start)) / 1000)],
+    ['작품 관람', visits.length + '번'],
+    ['작품 앞 총', fmtDur(visits.reduce((a, v) => a + (v.seconds || 0), 0))],
+    ['관람객 말', chat.filter(c => c.data.role === 'visitor').length + '번'],
+    ['센서 기록', ticks.length + '줄'],
+  ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  renderVisits(visits);
+  renderChat(chat);
+  renderSensors(ticks, visits);
+  renderLog(rows);
+  $('detailPanel').scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderVisits(visits) {
+  const chips = [];
+  visits.forEach((v, i) => {
+    chips.push(`<span class="chip" title="${esc(v.title)}">${shortArt(v.artwork)} ${esc(v.title)} · ${fmtDur(v.seconds || 0)}</span>`);
+    if (v.next === '이동') chips.push(`<span class="chip move">이동</span>`);
+    else if (!String(v.next).startsWith('artwork_')) chips.push(`<span class="chip move">${esc(v.next)}</span>`);
+    else chips.push('<span class="muted">→</span>');
+  });
+  $('path').innerHTML = chips.join('') || '<span class="muted">작품 앞에 머문 기록이 없습니다.</span>';
+  $('visits').innerHTML = visits.length ? `<tr><th>도착</th><th>작품</th><th class="num">머문 시간</th><th>다음</th></tr>` +
+    visits.map(v => `<tr><td>${fmtClock(v.start)}</td><td>${shortArt(v.artwork)} ${esc(v.title)}</td>
+      <td class="num">${fmtDur(v.seconds || 0)}</td><td>${esc(v.next)}</td></tr>`).join('') : '';
+}
+
+function renderChat(chat) {
+  $('chat').innerHTML = chat.map(c => `<div class="bubble ${c.data.role === 'visitor' ? 'visitor' : 'docent'}">
+    <div class="meta">${c.data.role === 'visitor' ? '관람객' + (c.data.via === 'phone' ? ' (휴대폰 글)' : '') : '도슨트'} · ${fmtClock(c.at)}${c.data.artwork ? ' · ' + shortArt(c.data.artwork) : ''}</div>
+    ${esc(c.data.text)}</div>`).join('') || '<span class="muted">대화가 없습니다.</span>';
+}
+
+function tickRow(t) {
+  const d = t.data || {}, m = d.motion || {}, dec = d.decision || {};
+  const ble = (d.ble || [])[0] || [], cam = (d.cam || [])[0] || [];
+  const g = m.gravity || [], b = m.magnetic || [];
+  return { at: t.at, current: d.current ?? '', decision: dec.id ?? '', certain: dec.certain ?? '', reason: dec.reason ?? '',
+    ble1: ble[0] ?? '', ble1_score: ble[1] ?? '', cam1: cam[0] ?? '', cam1_prob: cam[1] ?? '', cam_age: d.camAge ?? '',
+    walking: m.walking ?? '', walked_m: m.walked ?? '', heading: m.heading ?? '', yaw: m.yaw ?? '', accel: m.accel ?? '',
+    gravity_x: g[0] ?? '', gravity_y: g[1] ?? '', gravity_z: g[2] ?? '', mag_x: b[0] ?? '', mag_y: b[1] ?? '', mag_z: b[2] ?? '',
+    beacons_3s: d.obs3 ? JSON.stringify(d.obs3) : '' };
+}
+
+function renderSensors(ticks, visits) {
+  const W = 1000, H = 180, P = 28;
+  if (!ticks.length) { $('chart').innerHTML = '<p class="muted">센서 기록이 없습니다.</p>'; $('ticks').innerHTML = ''; return; }
+  const t0 = new Date(ticks[0].at).getTime(), t1 = Math.max(new Date(ticks[ticks.length - 1].at).getTime(), t0 + 1000);
+  const x = t => P + (new Date(t).getTime() - t0) / (t1 - t0) * (W - 2 * P);
+  const y = v => H - P - v * (H - 2 * P);
+  const line = (key) => ticks.map(t => { const a = (t.data || {})[key]; const v = a && a[0] ? a[0][1] : 0; return `${x(t.at).toFixed(1)},${y(v).toFixed(1)}`; }).join(' ');
+  let walk = '';
+  ticks.forEach((t, i) => {
+    if (t.data && t.data.motion && t.data.motion.walking) {
+      const nx = i + 1 < ticks.length ? x(ticks[i + 1].at) : x(t.at) + 2;
+      walk += `<rect x="${x(t.at)}" y="${P}" width="${Math.max(nx - x(t.at), 1)}" height="${H - 2 * P}" fill="var(--walk)"/>`;
+    }
+  });
+  const marks = visits.map(v => `<line x1="${x(v.start)}" x2="${x(v.start)}" y1="${P}" y2="${H - P}" stroke="var(--line)"/>
+    <text x="${x(v.start) + 3}" y="${P - 6}">${shortArt(v.artwork)}</text>`).join('');
+  $('chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="센서 시간 그래프">
+    ${walk}${marks}
+    <line x1="${P}" x2="${W - P}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)"/>
+    <line x1="${P}" x2="${W - P}" y1="${y(0.9)}" y2="${y(0.9)}" stroke="var(--line)" stroke-dasharray="4 4"/>
+    <text x="2" y="${y(0.9) + 4}">0.9</text><text x="2" y="${y(0) + 4}">0</text><text x="2" y="${y(1) + 4}">1</text>
+    <polyline fill="none" stroke="var(--ble)" stroke-width="1.5" points="${line('ble')}"/>
+    <polyline fill="none" stroke="var(--cam)" stroke-width="1.5" points="${line('cam')}"/>
+    <text x="${P}" y="${H - 6}">${fmtClock(ticks[0].at)}</text>
+    <text x="${W - P}" y="${H - 6}" text-anchor="end">${fmtClock(ticks[ticks.length - 1].at)}</text>
+  </svg>`;
+  const rows = ticks.slice(0, 300).map(tickRow);
+  $('ticks').innerHTML = `<tr><th>시각</th><th>지금 작품</th><th>판정</th><th>비콘 1위</th><th>사진 1위</th><th>걷기</th><th class="num">방향°</th><th class="num">가속</th></tr>` +
+    rows.map(r => `<tr><td>${fmtClock(r.at)}</td><td>${shortArt(r.current)}</td><td>${shortArt(r.decision)}${r.certain === false ? '?' : ''}</td>
+      <td>${shortArt(r.ble1)} ${r.ble1_score}</td><td>${shortArt(r.cam1)} ${r.cam1_prob}</td><td>${r.walking ? '걷는 중' : ''}</td>
+      <td class="num">${r.heading}</td><td class="num">${r.accel}</td></tr>`).join('');
+}
+
+function renderLog(rows) {
+  const q = $('logFilter').value.trim().toLowerCase();
+  const list = rows.filter(r => r.kind !== 'tick' && (!q || (r.category + ' ' + r.message).toLowerCase().includes(q)));
+  $('log').innerHTML = `<tr><th>시각</th><th>종류</th><th>분류</th><th>내용</th></tr>` +
+    list.map(r => `<tr><td>${fmtClock(r.at)}</td><td class="muted">${r.level}</td><td>${esc(r.category)}</td><td>${esc(r.message)}</td></tr>`).join('');
+}
+$('logFilter').oninput = () => current && renderLog(current.rows);
+
+for (const b of $('tabs').querySelectorAll('button')) b.onclick = () => {
+  for (const o of $('tabs').querySelectorAll('button')) o.classList.toggle('on', o === b);
+  for (const p of document.querySelectorAll('[data-pane]')) p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab);
+};
+
+// ---------- 내려받기 ----------
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function csv(rows) {
+  if (!rows.length) return '';
+  const keys = Object.keys(rows[0]);
+  const cell = v => { const s = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  return '﻿' + [keys.join(','), ...rows.map(r => keys.map(k => cell(r[k])).join(','))].join('\n');
+}
+const visitCsvRows = (visits, sessOf) => visits.map(v => ({ session: v.session, device: sessOf(v.session)?.device ?? '',
+  arrived: v.start, artwork: v.artwork, title: v.title, seconds: v.seconds, next: v.next }));
+const chatCsvRows = chat => chat.map(c => ({ session: c.session_id, device: c.device, at: c.at,
+  role: c.data.role === 'visitor' ? '관람객' : '도슨트', via: c.data.via || '', artwork: c.data.artwork || '', text: c.data.text }));
+const stamp = () => `${$('from').value}_${$('to').value}`;
+
+$('dlRange').onclick = async () => {
+  $('listMsg').className = 'muted';
+  $('listMsg').textContent = '센서 기록까지 모두 받는 중… (기간이 길면 오래 걸려요)';
+  try {
+    const all = await fetchAll(() => baseQuery(null));
+    download(`mmca_research_${stamp()}.jsonl`, all.map(r => JSON.stringify(r)).join('\n'), 'application/x-ndjson');
+    $('listMsg').textContent = `${all.length}줄 받음`;
+  } catch (e) { showErr('listMsg', e); }
+};
+$('dlVisitsRange').onclick = () => {
+  const worn = sessions.filter(s => s.worn || $('showOff').checked);
+  download(`mmca_visits_${stamp()}.csv`, csv(visitCsvRows(worn.flatMap(s => s.visits), id => sessions.find(s => s.id === id))), 'text/csv');
+};
+$('dlChatRange').onclick = () => {
+  download(`mmca_chat_${stamp()}.csv`, csv(chatCsvRows(sessions.flatMap(s => s.chat))), 'text/csv');
+};
+$('dlSession').onclick = () => current && download(`mmca_session_${current.id}.json`, JSON.stringify(current.rows, null, 1), 'application/json');
+$('dlSessionVisits').onclick = () => current && download(`mmca_session_${current.id}_visits.csv`,
+  csv(visitCsvRows(current.rows.filter(r => r.category === 'visit' && r.data).map(visitOf), () => current.session)), 'text/csv');
+$('dlSessionChat').onclick = () => current && download(`mmca_session_${current.id}_chat.csv`,
+  csv(chatCsvRows(current.rows.filter(r => r.data && r.data.role))), 'text/csv');
+$('dlSessionTicks').onclick = () => current && download(`mmca_session_${current.id}_sensors.csv`,
+  csv(current.rows.filter(r => r.kind === 'tick').map(tickRow)), 'text/csv');
+</script>
+</body>
+</html>
